@@ -1,0 +1,3 @@
+packages: ., imperial-conquest
+tests: True
+optimization: 2
