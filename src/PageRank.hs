@@ -80,5 +80,5 @@ iterateMaybe :: (a -> Maybe a) -> a -> [a]
 iterateMaybe f x = x : maybe [] (iterateMaybe f) (f x)
 
 pageRank' :: (Ord pageId, Graph g e pageId) => g -> PageRanks pageId
-pageRank' g = undefined -- TODO: Problem 7
+pageRank' g = last (take 200 (pageRanks' g k))
   where k = 0.0001
