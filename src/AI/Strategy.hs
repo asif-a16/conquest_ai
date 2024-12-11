@@ -77,7 +77,7 @@ zergRush gameState aiState
   | isNothing currentTarget = ([], [], aiState {rushTarget = findEnemyPlanet gameState})
 
   -- If the target planet is already ours, find a new enemy planet to target
-  | ourPlanet (lookupPlanet (fromJust currentTarget) gameState) = 
+  | ourPlanet (lookupPlanet (fromJust currentTarget) gameState) =
       ([], [], aiState {rushTarget = findEnemyPlanet gameState})
 
   -- Otherwise, attack the current target planet
@@ -86,19 +86,10 @@ zergRush gameState aiState
     currentTarget = rushTarget aiState  -- The current target planet from the AI's state
 
 findBestTarget :: PlanetRanks -> GameState -> Maybe PlanetId
-findBestTarget planetRanks gameState =
-  let
-    -- Filter planets that are not owned by the player
-    enemyPlanets = M.filterWithKey 
-      (\planetId _ -> not (ourPlanet (lookupPlanet planetId gameState))) 
-      planetRanks
-  in
-    -- Return the best target planet based on its rank
-    if M.null enemyPlanets 
-      then Nothing  -- No valid targets
-      else Just (fst (maximumBy 
-        (\planet1 planet2 -> compare (snd planet1) (snd planet2)) 
-        (M.toList enemyPlanets)))
+findBestTarget planetRanks gameState
+      | M.null candidates = Nothing
+      | otherwise = Just (minimum [id | (id, r) <- M.toList candidates, r == maximum (M.elems candidates)])
+      where  candidates = M.filterWithKey (\id _ -> not (ourPlanet (lookupPlanet id gameState))) planetRanks
 
 -- PlanetRank Rush Strategy
 planetRankRush :: GameState -> AI.State -> ([Order], Log, AI.State)
@@ -114,17 +105,102 @@ planetRankRush gameState aiState =
     -- Generate orders and determine the updated target
     (generatedOrders, updatedTarget) = case bestTargetPlanet of
       Just planetId
-        | not (ourPlanet (lookupPlanet planetId gameState)) -> 
+        | not (ourPlanet (lookupPlanet planetId gameState)) ->
             (attackFromAll planetId gameState, Just planetId)  -- Attack the target if it's not owned
-      _ -> 
+      _ ->
             ([], bestTargetPlanet)  -- No valid target or already owned, do nothing
 
--- TimidRush Strategy
-timidAttackFromAll :: PlanetId -> GameState -> [Order]
-timidAttackFromAll = undefined -- TODO: Problem 10
+-- Find the easiest path between two planets based on defense strength
+easiestPath :: PlanetId -> PlanetId -> GameState -> Maybe (Path (WormholeId, Wormhole))
+easiestPath sourcePlanet targetPlanet gameState
+  | null validPaths = Nothing  -- No valid paths found
+  | otherwise       = Just (minimumBy comparePaths validPaths)
+  where
+    -- Filter paths from source to target that end at the target planet
+    validPaths :: [Path (WormholeId, Wormhole)]
+    validPaths = filter ((== targetPlanet) . target) 
+                        (shortestPaths (defState gameState) sourcePlanet)
 
+    -- Calculate the defense value of a path based on enemy ships on target planets
+    pathDefenseValue :: Path (WormholeId, Wormhole) -> GameState -> Int
+    pathDefenseValue (Path _ edges) currentGameState =
+      sum [ numShips
+          | (_, wormhole) <- edges
+          , let Ships numShips = shipsOnPlanet currentGameState (target wormhole)
+          , not (ourPlanet (lookupPlanet (target wormhole) currentGameState))
+          ]
+
+    -- Compare two paths based on their defense value and the target of the last edge
+    comparePaths :: Path (WormholeId, Wormhole)
+                 -> Path (WormholeId, Wormhole)
+                 -> Ordering
+    comparePaths path1@(Path _ edges1) path2@(Path _ edges2) =
+      compare (pathDefenseValue path1 gameState) (pathDefenseValue path2 gameState)
+        <> compare (target (snd (last edges1)))
+                   (target (snd (last edges2)))
+
+-- TimidRush Strategy
+defState :: GameState -> GameState
+defState gameState@(GameState planets wormholes fleets) =
+  GameState planets updatedWormholes fleets
+  where
+    -- Update the delay for each wormhole
+    updatedWormholes = M.map updateWormhole wormholes
+
+    -- Recalculate the delay for a single wormhole
+    updateWormhole :: Wormhole -> Wormhole
+    updateWormhole wormhole@(Wormhole sourcePlanet targetPlanet _)
+      -- If the target planet is owned by us, set the delay to 0
+      | ourPlanet (lookupPlanet (target wormhole) gameState) =
+          Wormhole sourcePlanet targetPlanet (Turns 0)
+
+      -- Otherwise, set the delay based on the number of ships on the target planet
+      | otherwise =
+          Wormhole sourcePlanet targetPlanet (Turns delayTurns)
+      where
+        -- Extract the number of ships on the target planet
+        Ships delayTurns = shipsOnPlanet gameState (target wormhole)
+
+-- Generate attack orders from all owned planets to the target planet
+timidAttackFromAll :: PlanetId -> GameState -> [Order]
+timidAttackFromAll targetPlanetId gameState =
+  concatMap ((\edge -> send edge Nothing gameState) . fst) validPaths
+  where
+    -- Calculate the shortest paths from each owned planet to the target planet
+    shortestPathsToTarget = 
+      map (\(planetId, _) -> easiestPath planetId targetPlanetId gameState) 
+          (M.toList (ourPlanets gameState))
+
+    -- Filter valid paths (non-Nothing) and extract the last edge of each path
+    validPaths = extractLastEdges (catMaybes shortestPathsToTarget)
+
+    -- Extract the last edge from each path in the list
+    extractLastEdges :: [Path e] -> [e]
+    extractLastEdges [] = []
+    extractLastEdges ((Path _ edges) : remainingPaths) = 
+      last edges : extractLastEdges remainingPaths
+
+-- Execute a timid rush strategy based on the current game state and AI state
 timidRush :: GameState -> AI.State -> ([Order], Log, AI.State)
-timidRush = undefined -- TODO: Problem 10
+timidRush gameState aiState =
+  (generatedOrders, [], updatedAIState)
+  where
+    -- Retrieve or calculate the current planet ranks
+    planetRanks = fromMaybe (planetRank gameState) (prs aiState)
+
+    -- Identify the best target planet based on the planet ranks
+    bestTargetPlanet = findBestTarget planetRanks gameState
+
+    -- Determine orders and update the target based on the best target planet
+    (generatedOrders, updatedTarget) = case bestTargetPlanet of
+      Just targetPlanetId
+        | not (ourPlanet (lookupPlanet targetPlanetId gameState)) ->
+            (timidAttackFromAll targetPlanetId gameState, Just targetPlanetId)
+      _ ->
+            ([], bestTargetPlanet)
+
+    -- Update the AI state with the new target and current planet ranks
+    updatedAIState = aiState { rushTarget = updatedTarget, prs = Just planetRanks }
 
 -- Skynet
 skynet :: GameState -> AI.State -> ([Order], Log, AI.State)
