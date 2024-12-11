@@ -23,7 +23,9 @@ initPageRanks g = M.fromList [ (p, PageRank (1 / fromIntegral n)) | p <- ps ]
         n  = length ps
 
 initPageRank :: Map pageId a -> PageRanks pageId
-initPageRank = undefined -- TODO: Problem 5
+initPageRank pageId = M.map (const (PageRank (1 / fromIntegral n))) pageId
+  where
+    n = M.size pageId
 
 nextPageRank :: (Ord pageId, Edge e pageId, Graph g e pageId) => g -> PageRanks pageId -> pageId -> PageRank
 nextPageRank g pr i = undefined -- TODO: Problem 6
