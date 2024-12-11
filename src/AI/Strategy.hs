@@ -35,7 +35,10 @@ strategise Skynet = skynet
 
 -- Helpers
 findEnemyPlanet :: GameState -> Maybe PlanetId
-findEnemyPlanet = undefined -- TODO: Problem 1
+findEnemyPlanet (GameState ps _ _) =
+      case M.toList $ M.filter enemyPlanet ps of
+            ((planetId, _):_) -> Just planetId
+            []                -> Nothing
 
 send :: WormholeId -> Maybe Ships -> GameState -> [Order]
 send wId mShips st = undefined -- TODO: Problem 2
