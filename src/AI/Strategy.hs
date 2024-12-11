@@ -56,24 +56,34 @@ pacifist _ ai = ([], ["This world is illusory. Why fight?"], ai)
 
 -- Zerg Rush Strategy
 attackFromAll :: PlanetId -> GameState -> [Order]
-attackFromAll targetId gs = 
+attackFromAll targetId gs =
   -- Generate orders to send ships from each planet along the last edge of their path to the target
   concatMap ((\edge -> send edge Nothing gs) . fst) (helper (catMaybes temp))
   where
     -- Compute the shortest paths from each of our planets to the target planet
-    temp = map 
+    temp = map
       (\(planetId, _) -> shortestPath planetId targetId gs)  -- Find the shortest path from each planet to the target
       (M.toList (ourPlanets gs))                            -- List of our planets with their IDs and details
 
     -- Extract the last edge of each valid path to the target
     helper :: [Path e] -> [e]
     helper [] = []                                           -- No paths, return an empty list
-    helper ((Path _ edges) : paths) = 
+    helper ((Path _ edges) : paths) =
       last edges : helper paths                              -- Add the last edge of the current path and recurse for the rest
 
-
 zergRush :: GameState -> AI.State -> ([Order], Log, AI.State)
-zergRush = undefined -- TODO: Problem 4
+zergRush gameState aiState
+  -- If there's no target planet, find a new enemy planet to target
+  | isNothing currentTarget = ([], [], aiState {rushTarget = findEnemyPlanet gameState})
+
+  -- If the target planet is already ours, find a new enemy planet to target
+  | ourPlanet (lookupPlanet (fromJust currentTarget) gameState) = 
+      ([], [], aiState {rushTarget = findEnemyPlanet gameState})
+
+  -- Otherwise, attack the current target planet
+  | otherwise = (attackFromAll (fromJust currentTarget) gameState, [], aiState)
+  where
+    currentTarget = rushTarget aiState  -- The current target planet from the AI's state
 
 -- PlanetRank Rush Strategy
 planetRankRush :: GameState -> AI.State -> ([Order], Log, AI.State)
