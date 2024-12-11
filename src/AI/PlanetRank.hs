@@ -38,13 +38,13 @@ nextPlanetRank g@(GameState planets wormholes fleets) pr i =
         n   = fromIntegral (length planets)
 
         targets :: PlanetId -> [PlanetId]
-        targets = undefined -- TODO: Problem 8
+        targets planetId = map target (M.elems (wormholesFrom (Source planetId) g))
 
         growth :: PlanetId -> PlanetRank
         growth i  = (\(Planet _ _ g) -> fromIntegral g) (planets M.! i)
 
         growths :: PlanetId -> PlanetRank
-        growths = undefined -- TODO: Problem 8
+        growths planetId = sum (map (growth . source) (M.elems (wormholesTo (Target planetId) g)))
 
 checkPlanetRanks :: PlanetRanks -> PlanetRank
 checkPlanetRanks = sum . M.elems
