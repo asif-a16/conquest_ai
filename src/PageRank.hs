@@ -28,9 +28,24 @@ initPageRank pageId = M.map (const (PageRank (1 / fromIntegral n))) pageId
     n = M.size pageId
 
 nextPageRank :: (Ord pageId, Edge e pageId, Graph g e pageId) => g -> PageRanks pageId -> pageId -> PageRank
-nextPageRank g pr i = undefined -- TODO: Problem 6
+nextPageRank graph currentPageRanks targetPageId = PageRank (randomJumpFactor + dampingFactorContribution)
   where
-    d = 0.85
+    dampingFactor = 0.85
+    totalPages = fromIntegral $ M.size currentPageRanks
+
+    -- Random jump factor: contribution from teleportation to any page
+    randomJumpFactor = (1 - dampingFactor) / totalPages
+
+    -- Contribution from linked pages, weighted by the damping factor
+    dampingFactorContribution = dampingFactor * sum (map linkContribution (edgesTo graph targetPageId))
+
+    -- Contribution from a single incoming link (edge)
+    linkContribution edge = case M.lookup (source edge) currentPageRanks of
+      Just (PageRank sourcePageRank) -> sourcePageRank / fromIntegral (outgoingLinksCount graph (source edge))
+      Nothing -> 0  -- If the source page has no rank, contribute 0
+
+    -- Count the number of outgoing links from a page
+    outgoingLinksCount g pageId = length (edgesFrom g pageId)
 
 nextPageRanks :: (Ord pageId, Graph g e pageId) => g -> PageRanks pageId -> PageRanks pageId
 nextPageRanks g pr = M.mapWithKey (const . nextPageRank g pr) pr
