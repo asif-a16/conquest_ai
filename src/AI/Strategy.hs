@@ -85,9 +85,39 @@ zergRush gameState aiState
   where
     currentTarget = rushTarget aiState  -- The current target planet from the AI's state
 
+findBestTarget :: PlanetRanks -> GameState -> Maybe PlanetId
+findBestTarget planetRanks gameState =
+  let
+    -- Filter planets that are not owned by the player
+    enemyPlanets = M.filterWithKey 
+      (\planetId _ -> not (ourPlanet (lookupPlanet planetId gameState))) 
+      planetRanks
+  in
+    -- Return the best target planet based on its rank
+    if M.null enemyPlanets 
+      then Nothing  -- No valid targets
+      else Just (fst (maximumBy 
+        (\planet1 planet2 -> compare (snd planet1) (snd planet2)) 
+        (M.toList enemyPlanets)))
+
 -- PlanetRank Rush Strategy
 planetRankRush :: GameState -> AI.State -> ([Order], Log, AI.State)
-planetRankRush = undefined -- TODO: Problem 9
+planetRankRush gameState aiState =
+  (generatedOrders, [], aiState { rushTarget = updatedTarget, prs = Just planetRanks })
+  where
+    -- Retrieve or calculate the current planet ranks
+    planetRanks = fromMaybe (planetRank gameState) (prs aiState)
+
+    -- Find the best target planet based on the planet ranks
+    bestTargetPlanet = findBestTarget planetRanks gameState
+
+    -- Generate orders and determine the updated target
+    (generatedOrders, updatedTarget) = case bestTargetPlanet of
+      Just planetId
+        | not (ourPlanet (lookupPlanet planetId gameState)) -> 
+            (attackFromAll planetId gameState, Just planetId)  -- Attack the target if it's not owned
+      _ -> 
+            ([], bestTargetPlanet)  -- No valid target or already owned, do nothing
 
 -- TimidRush Strategy
 timidAttackFromAll :: PlanetId -> GameState -> [Order]
