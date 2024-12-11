@@ -41,9 +41,14 @@ findEnemyPlanet (GameState ps _ _) =
             []                -> Nothing
 
 send :: WormholeId -> Maybe Ships -> GameState -> [Order]
-send wId mShips st = undefined -- TODO: Problem 2
- where Wormhole (Source src) _ _ = lookupWormhole wId st
-       planet@(Planet _ total_ships _) = lookupPlanet src st
+send wId mShips st
+      | ourPlanet planet = 
+            case mShips of
+                  Nothing -> [Order wId total_ships]
+                  Just _  -> [Order wId (min total_ships (fromJust mShips))]
+      | otherwise        = []
+      where Wormhole (Source src) _ _ = lookupWormhole wId st
+            planet@(Planet _ total_ships _) = lookupPlanet src st
 
 -- Pacifist Strategy
 pacifist :: GameState -> AI.State -> ([Order], Log, AI.State)
